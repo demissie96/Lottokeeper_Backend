@@ -29,7 +29,6 @@ app.get("/all_users", (req, res) => {
       console.error(err);
       return res.status(500).json({ error: "Internal Server Error" });
     }
-    console.log(result);
     res.json(result);
   });
 });
@@ -44,7 +43,6 @@ app.get("/user", (req, res) => {
       console.error(err);
       return res.status(500).json({ error: "Internal Server Error" });
     }
-    console.log(result);
     res.json(result);
   });
 });
@@ -59,7 +57,6 @@ app.get("/player_betting_list", (req, res) => {
       console.error(err);
       return res.status(500).json({ error: "Internal Server Error" });
     }
-    console.log(result);
     res.json(result);
   });
 });
@@ -72,7 +69,6 @@ app.get("/all_bets_list", (req, res) => {
       console.error(err);
       return res.status(500).json({ error: "Internal Server Error" });
     }
-    console.log(result);
     res.json(result);
   });
 });
@@ -85,7 +81,6 @@ app.get("/winner_numbers", (req, res) => {
       console.error(err);
       return res.status(500).json({ error: "Internal Server Error" });
     }
-    console.log(result);
     res.json(result);
   });
 });
@@ -103,8 +98,8 @@ app.delete("/users", (req, res) => {
       }
 
       // Query to delete from Users table
-      let deleteSql = "DELETE FROM Users WHERE ID > 1;";
-      connection.query(deleteSql, function(err, deleteResult) {
+      let deleteUsersSql = "DELETE FROM Users WHERE ID > 1;";
+      connection.query(deleteUsersSql, function(err, deleteUsersResult) {
         if (err) {
           // If error, rollback the transaction
           return connection.rollback(function() {
@@ -113,11 +108,9 @@ app.delete("/users", (req, res) => {
           });
         }
 
-        console.log(deleteResult);
-
-        // Query to update a specific user's balance
-        let updateSql = "UPDATE Users SET Balance = 0 WHERE ID = 1;";
-        connection.query(updateSql, function(err, updateResult) {
+        // Query to delete from WinnerNumbers table
+        let deleteWinnerNumbersSql = "DELETE FROM WinnerNumbers;";
+        connection.query(deleteWinnerNumbersSql, function(err, deleteWinnerNumbersResult) {
           if (err) {
             // If error, rollback the transaction
             return connection.rollback(function() {
@@ -126,10 +119,9 @@ app.delete("/users", (req, res) => {
             });
           }
 
-          console.log(updateResult);
-
-          // Commit the transaction
-          connection.commit(function(err) {
+          // Query to update a specific user's balance
+          let updateUserSql = "UPDATE Users SET Balance = 0 WHERE ID = 1;";
+          connection.query(updateUserSql, function(err, updateUserResult) {
             if (err) {
               // If error, rollback the transaction
               return connection.rollback(function() {
@@ -138,9 +130,20 @@ app.delete("/users", (req, res) => {
               });
             }
 
-            console.log("Transaction Complete.");
-            connection.release();
-            res.json("Number of users deleted: " + deleteResult.affectedRows);
+            // Commit the transaction
+            connection.commit(function(err) {
+              if (err) {
+                // If error, rollback the transaction
+                return connection.rollback(function() {
+                  connection.release();
+                  throw err;
+                });
+              }
+
+              console.log("Transaction Complete.");
+              connection.release();
+              res.json("Number of users deleted: " + deleteUsersResult.affectedRows);
+            });
           });
         });
       });
@@ -148,40 +151,85 @@ app.delete("/users", (req, res) => {
   });
 });
 
-
 app.delete("/bettings", (req, res) => {
-  var sql = "DELETE FROM Bettings;";
-
-  pool.query(sql, function(err, result) {
+  // Get a connection from the pool
+  pool.getConnection(function(err, connection) {
     if (err) {
       console.error(err);
       return res.status(500).json({ error: "Internal Server Error" });
     }
-    console.log(result);
-    res.json("Number of bettings deleted: " + result.affectedRows);
-  });
-})
-  .post("/newuser", (req, res) => {
-    // Add new user
-    let name = req.headers.name;
-    let balance = req.headers.balance;
 
-    let sql = `INSERT INTO Users (Name, Balance) VALUES(?, ?)`;
-    let values = [name, balance];
-
-    pool.query(sql, values, function(err, result) {
+    // Start a transaction
+    connection.beginTransaction(function(err) {
       if (err) {
+        connection.release();
         console.error(err);
         return res.status(500).json({ error: "Internal Server Error" });
       }
-      console.log(result);
-      res.json(result);
+
+      // Query to delete from Bettings table
+      let deleteBettingsSql = "DELETE FROM Bettings;";
+      connection.query(deleteBettingsSql, function(err, deleteBettingsResult) {
+        if (err) {
+          // If error, rollback the transaction
+          return connection.rollback(function() {
+            connection.release();
+            console.error(err);
+            return res.status(500).json({ error: "Internal Server Error" });
+          });
+        }
+
+        // Query to delete from WinnerNumbers table
+        let deleteWinnerNumbersSql = "DELETE FROM WinnerNumbers;";
+        connection.query(deleteWinnerNumbersSql, function(err, deleteWinnerNumbersResult) {
+          if (err) {
+            // If error, rollback the transaction
+            return connection.rollback(function() {
+              connection.release();
+              console.error(err);
+              return res.status(500).json({ error: "Internal Server Error" });
+            });
+          }
+
+          // Commit the transaction
+          connection.commit(function(err) {
+            if (err) {
+              // If error, rollback the transaction
+              return connection.rollback(function() {
+                connection.release();
+                console.error(err);
+                return res.status(500).json({ error: "Internal Server Error" });
+              });
+            }
+
+            console.log("Transaction Complete.");
+            connection.release();
+            res.json("Number of bettings deleted: " + deleteBettingsResult.affectedRows);
+          });
+        });
+      });
     });
   });
+});
+
+app.post("/newuser", (req, res) => {
+  // Add new user
+  let name = req.headers.name;
+  let balance = req.headers.balance;
+
+  let sql = `INSERT INTO Users (Name, Balance) VALUES(?, ?)`;
+  let values = [name, balance];
+
+  pool.query(sql, values, function(err, result) {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
+    res.json(result);
+  });
+});
 
 app.post("/newbet", (req, res) => {
-  console.log("************ Triggered ************");
-
   // Get a connection from the pool
   pool.getConnection(function(err, connection) {
     if (err) throw err;
@@ -215,8 +263,6 @@ app.post("/newbet", (req, res) => {
           });
         }
 
-        console.log(result);
-
         // Update Users table (first update)
         let sqlUpdate1 =
           userId === "1"
@@ -233,8 +279,6 @@ app.post("/newbet", (req, res) => {
             });
           }
 
-          console.log(result);
-
           // Update Users table (second update)
           let sqlUpdate2 = `UPDATE Users SET Balance = Balance + 500 WHERE ID = 1;`;
 
@@ -246,8 +290,6 @@ app.post("/newbet", (req, res) => {
                 throw err;
               });
             }
-
-            console.log(result);
 
             // Commit the transaction
             connection.commit(function(err) {
@@ -268,32 +310,82 @@ app.post("/newbet", (req, res) => {
       });
     });
   });
-})
-  .post("/new_winner_nums", (req, res) => {
-    // Add new bet
-    let num1 = req.headers.num1;
-    let num2 = req.headers.num2;
-    let num3 = req.headers.num3;
-    let num4 = req.headers.num4;
-    let num5 = req.headers.num5;
+});
 
-    let sql = `INSERT INTO WinnerNumbers (Num_1, Num_2, Num_3, Num_4, Num_5) 
+app.post("/new_winner_nums", (req, res) => {
+  // Add new bet
+  let num1 = req.headers.num1;
+  let num2 = req.headers.num2;
+  let num3 = req.headers.num3;
+  let num4 = req.headers.num4;
+  let num5 = req.headers.num5;
+
+  let sql = `INSERT INTO WinnerNumbers (Num_1, Num_2, Num_3, Num_4, Num_5) 
                 VALUES(?, ?, ?, ?, ?)`;
-    let values = [num1, num2, num3, num4, num5];
+  let values = [num1, num2, num3, num4, num5];
 
-    pool.query(sql, values, function(err, result) {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ error: "Internal Server Error" });
-      }
-      console.log(result);
-      res.json(result);
-    });
-  })
-  .put("/reward_update", (req, res) => {
-    // Update an element
-    res.json("Test Run");
+  pool.query(sql, values, function(err, result) {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
+    res.json(result);
   });
+});
+
+app.put("/multiple_query", (req, res) => {
+  // Add proper validation and sanitation for the SQL query
+  var query = req.headers.query;
+
+  if (!query) {
+    return res.status(400).json({ error: "Missing SQL query in headers" });
+  }
+
+  // Split the query into individual statements
+  const statements = query.split(";").filter((statement) => statement.trim() !== "");
+
+  // Use a transaction
+  pool.getConnection((err, connection) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
+
+    connection.beginTransaction((beginErr) => {
+      if (beginErr) {
+        connection.release();
+        console.error(beginErr);
+        return res.status(500).json({ error: "Transaction Begin Error" });
+      }
+
+      // Execute each statement in a loop
+      statements.forEach((statement) => {
+        connection.query(statement, (queryErr, result) => {
+          if (queryErr) {
+            return connection.rollback(() => {
+              connection.release();
+              console.error(queryErr);
+              return res.status(500).json({ error: "Transaction Rollback Error" });
+            });
+          }
+        });
+      });
+
+      connection.commit((commitErr) => {
+        if (commitErr) {
+          return connection.rollback(() => {
+            connection.release();
+            console.error(commitErr);
+            return res.status(500).json({ error: "Transaction Commit Error" });
+          });
+        }
+
+        connection.release();
+        res.json({ success: true });
+      });
+    });
+  });
+});
 
 app.listen(port, () => {
   console.log(`Example app run on http://localhost:${port}/`);
